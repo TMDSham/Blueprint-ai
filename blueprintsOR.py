@@ -3,7 +3,7 @@ from io import BytesIO
 from PIL import Image
 import base64
 import requests
-from bs4 import BeautifulSoup
+import json
 
 st.set_page_config(page_title='Blueprint take-off AI', page_icon='👁️')
 
@@ -21,12 +21,13 @@ if st.button('Send'):
     
     msg = {'role': 'user', 'content': []}
     msg['content'].append({'type': 'text', 'text': 'Provide a take-off of the quantities from this engineering drawing returning ONLY as a markdown table.'})
-    
+    images = []
     for img in img_input:
         if img.name.split('.')[-1].lower() not in ['png', 'jpg', 'jpeg', 'gif', 'webp']:
             st.warning('Only .jpg, .png, .gif, or .webp are supported')
             st.stop()
         encoded_img = base64.b64encode(img.read()).decode('utf-8')
+        images.append(img)
         msg['content'].append(
             {
                 'type': 'image_url',
@@ -37,6 +38,7 @@ if st.button('Send'):
             }
         )
 
+    # Prepare API call
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
@@ -55,25 +57,6 @@ if st.button('Send'):
     if response.status_code == 200:
         response_data = response.json()
         response_msg = response_data['choices'][0]['message']['content']
-        
-        # 🟡 Check if response contains HTML and parse it with BeautifulSoup
-        if "<table" in response_msg:
-            soup = BeautifulSoup(response_msg, "html.parser")
-            # Extract text from each table cell
-            rows = []
-            for row in soup.find_all("tr"):
-                cells = [cell.get_text(strip=True) for cell in row.find_all(["td", "th"])]
-                rows.append(cells)
-            # Display as a markdown table
-            if rows:
-                markdown_table = "| " + " | ".join(rows[0]) + " |\n"
-                markdown_table += "| " + " | ".join(["---"] * len(rows[0])) + " |\n"
-                for row in rows[1:]:
-                    markdown_table += "| " + " | ".join(row) + " |\n"
-                response_msg = markdown_table
-            else:
-                response_msg = "No table data found."
-    
     else:
         response_msg = f"Error: {response.status_code}\n{response.text}"
 
@@ -86,7 +69,6 @@ if st.button('Send'):
                 with st.expander('Attached Image'):
                     img = Image.open(BytesIO(base64.b64decode(i['image_url']['url'][23:])))
                     st.image(img)
-    
     if response_msg:
         with st.chat_message('assistant'):
             st.markdown(response_msg)
